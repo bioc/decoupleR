@@ -96,7 +96,6 @@ decouple <- function(mat,
             .data$source,
             .data$condition,
             .data$score,
-            if_else(include_time, .data$statistic_time, NULL),
             everything()
         ) %>%
         mutate(run_id = as.numeric(.data$run_id))
