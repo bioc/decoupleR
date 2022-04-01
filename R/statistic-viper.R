@@ -4,18 +4,24 @@
 #' Calculates regulatory activities using VIPER.
 #'
 #' @details
-#' This function is a wrapper for the method [viper::viper()].
+#' VIPER (Alvarez et al., 2016) estimates biological activities by performing a
+#' three-tailed enrichment score calculation. For further information check the
+#' supplementary information of the decoupler manuscript or the original
+#' publication.
+#' 
+#' Alvarez M.J.et al. (2016) Functional characterization of somatic mutations
+#' in cancer using network-based inference of protein activity. Nat. Genet.,
+#' 48, 838–847.
 #'
 #' @inheritParams .decoupler_mat_format
 #' @inheritParams .decoupler_network_format
 #' @param verbose Logical, whether progression messages should be printed in
 #' the terminal.
-#' @param minsize Integer indicating the minimum number of targets allowed per
-#' regulon.
 #' @param pleiotropy Logical, whether correction for pleiotropic regulation
 #' should be performed.
 #' @param eset.filter Logical, whether the dataset should be limited only to
-#' the genes represented in the interactome .
+#' the genes represented in the interactome.
+#' @param minsize Integer indicating the minimum number of targets per source.
 #' @inheritDotParams viper::viper -eset -regulon -verbose -minsize -pleiotropy -eset.filter
 #'
 #' @return A long format tibble of the enrichment scores for each source
@@ -45,16 +51,35 @@ run_viper <- function(mat,
                       .mor = .data$mor,
                       .likelihood = .data$likelihood,
                       verbose = FALSE,
-                      minsize = 0,
-                      pleiotropy = T,
-                      eset.filter = F,
+                      minsize = 5,
+                      pleiotropy = TRUE,
+                      eset.filter = FALSE,
                       ...) {
     # Check for NAs/Infs in mat
     check_nas_infs(mat)
 
     # Before to start ---------------------------------------------------------
     network <- network %>%
-        convert_to_viper({{ .source }}, {{ .target }}, {{ .mor }}, {{ .likelihood }})
+        rename_net({{ .source }}, {{ .target }}, {{ .mor }}, {{ .likelihood }})
+    network <- filt_minsize(rownames(mat), network, minsize)
+    # Normalize mor between -1 and 1
+    network <- network %>%
+        dplyr::group_by(source) %>%
+        dplyr::group_modify(function(.x, .y){
+            n_max <- max(abs(.x$mor))
+            .x$mor <- .x$mor / n_max
+            .x
+        })
+    # Transform to viper format
+    network <- network %>%
+        dplyr::mutate(mor = .data$mor) %>%
+        split(.$source) %>%
+        purrr::map(~ {
+            list(
+                tfmode = purrr::set_names(.x$mor, .x$target),
+                likelihood = .x$likelihood
+            )
+        })
 
     # Analysis ----------------------------------------------------------------
     exec(

@@ -15,7 +15,8 @@ run_udt(
   center = FALSE,
   na.rm = FALSE,
   min_n = 20,
-  seed = 42
+  seed = 42,
+  minsize = 5
 )
 }
 \arguments{
@@ -32,10 +33,9 @@ in \code{network} \code{.target} column.}
 
 \item{.mor}{Column with edge mode of regulation (i.e. mor).}
 
-\item{.likelihood}{Column with edge likelihood.}
+\item{.likelihood}{Deprecated argument. Now it will always be set to 1.}
 
-\item{sparse}{Logical value indicating if the generated profile matrix
-should be sparse.}
+\item{sparse}{Deprecated parameter.}
 
 \item{center}{Logical value indicating if \code{mat} must be centered by
 \code{\link[base:colSums]{base::rowMeans()}}.}
@@ -48,6 +48,8 @@ are required for the node to be split further.}
 
 \item{seed}{A single value, interpreted as an integer, or NULL for random
 number generation.}
+
+\item{minsize}{Integer indicating the minimum number of targets per source.}
 }
 \value{
 A long format tibble of the enrichment scores for each source
@@ -60,14 +62,14 @@ across the samples. Resulting tibble contains the following columns:
 }
 }
 \description{
-Calculates regulatory activities by fitting univariate decision trees (UDT)
-using \code{\link[rpart:rpart]{rpart::rpart()}}.
+Calculates regulatory activities by using UDT.
 }
 \details{
-UDT fits a (univariate) decision tree to estimate regulatory activities. UDT
-fits a decision tree that predicts the observed molecular readouts using the
-given weights of a regulator as a single co-variate. The obtained feature
-importance from the fitted model is the activity of the regulator.
+UDT fits a single regression decision tree for each sample and regulator,
+where the observed molecular readouts in mat are the response variable and
+the regulator weights in net are the explanatory one. Target features with
+no associated weight are set to zero. The obtained feature importance from
+the fitted model is the activity \code{udt} of a given regulator.
 }
 \examples{
 inputs_dir <- system.file("testdata", "inputs", package = "decoupleR")

@@ -36,14 +36,14 @@ statistics <- c(
 # Arguments for statistics; same order as statistics vector.
 args <- list(
     udt = list(),
-    mdt = list(),
+    mdt = list(trees=1000),
     aucell = list(nproc=1),
     wmean = list(),
     wsum = list(),
     ulm = list(),
     viper = list(),
     gsva = list(),
-    ora = list(),
+    ora = list(n_up=300, n_bottom=300),
     fgsea = list()
 )
 
@@ -78,15 +78,5 @@ test_that("decouple same results as independent functions", {
         readRDS() %>%
         dplyr::arrange(.data$statistic, .data$source, .data$condition)
 
-    expect_equal(res_decouple_defaults, exp_decouple_defaults, tolerance=1)
-})
-
-test_that("see expected toy call", {
-
-    # Choose the same defaults as in the section on generating expected results
-    expect_snapshot(
-        x = partial_decouple(show_toy_call = TRUE, include_time = FALSE) %>% {
-            TRUE
-        }
-    )
+    expect_equal(res_decouple_defaults, exp_decouple_defaults, tolerance=0.1)
 })

@@ -1,4 +1,85 @@
-# decoupleR 2.0.0
+# decoupleR 2.1.
+
+## Changes
+* `likelihood` param is deprecated, from now on, weights (positive or negative) 
+  should go to the `mor` column of `network`. Methods will still run if 
+  `likelihood` is specified, however they will be set to 1.
+
+* Added `minsize` argument to all methods, set to 5 by default. Sources 
+containing less than this value of targets in the input mat will be removed 
+from the  calculations.
+
+* Changed default behavior of the `decouple` function. Now if no methods are 
+specified in the `statistics` argument, the function will only run the top 
+performers in our benchmark (`mlm`, `ulm` and `wsum`). To run all methods like
+before, set `statistics` to 'all'. Moreover, the argument `consensus_stats` has 
+been added to filter statistics for the calculation of the `consensus` score. 
+By default it only uses `mlm`, `ulm` and `norm_wsum`, or if `statistics`=='all'
+all methods returned after running `decouple`.
+
+* `viper` method:
+    * Now properly handles weights in `mor` by normalizing them to -1 and +1.
+
+* `ulm`/`mlm`/`udt`/`mdt` methods:
+    * Changed how they processed the input network. Before the model 
+    matrix only contained the intersection of features between mat and 
+    network's targets, now it incorporates all features coming from mat 
+    ensuring a more robust prediction. Prediction values may change slightly 
+    from older versions. 
+    * Deprecated `sparse` argument. 
+    
+* `ora` method:
+    * Now takes top 5% features as default input instead of 300 up and bottom 
+    features.
+    * Added seed to randomly break ties
+    
+* `consensus` method: 
+    * No longer based on `RobustRankAggreg`. Now the consensus score is the mean of the
+    activities obtained after a double tailed z-score transformation.
+
+* Discarded `filter_regulons` function.
+
+* Moved major dependencies to Suggest to reduce the number of dependencies 
+needed.
+
+* Updated README by adding:
+    * Kinase inference example
+    * Graphical abstract
+    * Manuscript and citation
+    * New vignette style
+    
+* Updated documentation for all methods.
+
+## New features
+* Added wrappers to easily query `Omnipath`, one of the largest data-bases 
+collecting prior-knowledge resources. Added these functions:
+    * `show_resources`: shows available resources inside `Omnipath`.
+    * `get_resource`: gets any resource from `Omnipath`.
+    * `get_dorothea`: gets the DoRothEA gene regulatory network for 
+    transcription factor (TF) activity estimation. Note: this version is 
+    slightly different from the one in the package `dorothea` since it contains 
+    new edges and TFs and also weights the interactions by confidence levels.
+    * `get_progeny`: gets the PROGENy model for pathway activity estimation.
+
+* Added `show_methods` function, it shows how many statistics are currently 
+available.
+
+* Added `check_corr` function, it shows how correlated regulators in a network 
+are. It can be used to check for co-linearity for `mlm` and `mdt`. 
+
+* Added new error for `mlm` when co-variables are co-linear (regulators are too 
+correlated to fit a model).
+
+## Bugfixes
+* `wmean` and `wsum` now return the correct empirical p-values.
+
+* `ulm`, `mlm`, `mdt` and `udt` now accept matrices with one column as input. 
+
+* Results from `ulm` and `mlm` now correctly return un-grouped.
+
+* Methods correctly run when `mat` has no column names.
+
+# decoupleR 2.0
 
 ## Changes
 * Some method's names have been changed to make them easier to identify:
@@ -42,7 +123,7 @@ for the obtained score (`fgsea`, `mlm`, `ora`, `ulm`, `viper`, `wmean` and
 
 * New error added when the input matrix contains NAs or Infs. 
 
-# decoupleR 1.1.0
+# decoupleR 1.1
 
 ## New features
 

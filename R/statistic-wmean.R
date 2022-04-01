@@ -1,15 +1,15 @@
 #' Weighted Mean (WMEAN)
 #'
 #' @description
-#' Calculates regulatory activities by computing the WMEAN.
+#' Calculates regulatory activities using WMEAN.
 #'
 #' @details
-#' Infers activity score for each regulator by weighting the molecular readouts
-#' of its targets by their mode of regulations and likelihoods. In addition, it
-#' runs permutations to calculate empirical p-values, providing normalized
-#' (z-score) and corrected activity (estimate * -log10(pval)) scores. This is
-#' represented in the `statistic` column which will contain three values for
-#' each call to `run_wmean()`; __wmean__, __norm_wmean__ and __corr_wmean__.
+#' WMEAN infers regulator activities by first multiplying each target feature by
+#' its associated weight which then are summed to an enrichment score
+#' `wmean`. Furthermore, permutations of random target features can
+#' be performed to obtain a null distribution that can be used to compute a
+#' z-score `norm_wmean`, or a corrected estimate `corr_wmean` by multiplying
+#' `wmean` by the minus log10 of the obtained empirical p-value.
 #'
 #' @inheritParams .decoupler_mat_format
 #' @inheritParams .decoupler_network_format
@@ -18,6 +18,7 @@
 #'  number generation.
 #' @param sparse Should the matrices used for the calculation be sparse?
 #' @param randomize_type How to randomize the expression matrix.
+#' @param minsize Integer indicating the minimum number of targets per source.
 #'
 #' @return A long format tibble of the enrichment scores for each source
 #'  across the samples. Resulting tibble contains the following columns:
@@ -49,7 +50,9 @@ run_wmean <- function(mat,
                      times = 100,
                      seed = 42,
                      sparse = TRUE,
-                     randomize_type = "rows") {
+                     randomize_type = "rows",
+                     minsize = 5
+                     ) {
     # Before to start ---------------------------------------------------------
     if (times < 2) {
         rlang::abort(message = stringr::str_glue("Parameter 'times' must be greater than or equal to 2, but {times} was passed."))
@@ -59,7 +62,8 @@ run_wmean <- function(mat,
     check_nas_infs(mat)
 
     network <- network %>%
-        convert_to_wmean({{ .source }}, {{ .target }}, {{ .mor }}, {{ .likelihood }})
+        rename_net({{ .source }}, {{ .target }}, {{ .mor }}, {{ .likelihood }})
+    network <- filt_minsize(rownames(mat), network, minsize)
 
     # Preprocessing -----------------------------------------------------------
 
@@ -148,6 +152,8 @@ run_wmean <- function(mat,
             # (times-1)/times
             p_value = if_else(.data$p_value == 0, 1/times, .data$p_value),
             p_value = if_else(.data$p_value == 1, (times-1)/times, .data$p_value),
+            p_value = if_else(.data$p_value >= 0.5, 1-.data$p_value, .data$p_value),
+            p_value = .data$p_value * 2,
             c_score = .data$value * (-log10(.data$p_value))
         ) %>%
         # Reformat results

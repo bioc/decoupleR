@@ -12,9 +12,9 @@ run_viper(
   .mor = .data$mor,
   .likelihood = .data$likelihood,
   verbose = FALSE,
-  minsize = 0,
-  pleiotropy = T,
-  eset.filter = F,
+  minsize = 5,
+  pleiotropy = TRUE,
+  eset.filter = FALSE,
   ...
 )
 }
@@ -32,19 +32,18 @@ in \code{network} \code{.target} column.}
 
 \item{.mor}{Column with edge mode of regulation (i.e. mor).}
 
-\item{.likelihood}{Column with edge likelihood.}
+\item{.likelihood}{Deprecated argument. Now it will always be set to 1.}
 
 \item{verbose}{Logical, whether progression messages should be printed in
 the terminal.}
 
-\item{minsize}{Integer indicating the minimum number of targets allowed per
-regulon.}
+\item{minsize}{Integer indicating the minimum number of targets per source.}
 
 \item{pleiotropy}{Logical, whether correction for pleiotropic regulation
 should be performed.}
 
 \item{eset.filter}{Logical, whether the dataset should be limited only to
-the genes represented in the interactome .}
+the genes represented in the interactome.}
 
 \item{...}{
   Arguments passed on to \code{\link[viper:viper]{viper::viper}}
@@ -72,7 +71,14 @@ across the samples. Resulting tibble contains the following columns:
 Calculates regulatory activities using VIPER.
 }
 \details{
-This function is a wrapper for the method \code{\link[viper:viper]{viper::viper()}}.
+VIPER (Alvarez et al., 2016) estimates biological activities by performing a
+three-tailed enrichment score calculation. For further information check the
+supplementary information of the decoupler manuscript or the original
+publication.
+
+Alvarez M.J.et al. (2016) Functional characterization of somatic mutations
+in cancer using network-based inference of protein activity. Nat. Genet.,
+48, 838–847.
 }
 \examples{
 inputs_dir <- system.file("testdata", "inputs", package = "decoupleR")

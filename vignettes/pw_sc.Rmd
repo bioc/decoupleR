@@ -1,0 +1,175 @@
+---
+title: "Pathway activity inference from scRNA-seq"
+author:
+  - name: Pau Badia-i-Mompel
+    affiliation:
+    - Heidelberg Universiy
+output: 
+  BiocStyle::html_document:
+    self_contained: true
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+package: "`r pkg_ver('decoupleR')`"
+vignette: >
+  %\VignetteIndexEntry{Pathway activity activity inference from scRNA-seq}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+    collapse = TRUE,
+    comment = "#>"
+)
+```
+
+scRNA-seq yield many molecular readouts that are hard to interpret by
+themselves. One way of summarizing this information is by inferring pathway
+activities from prior knowledge.
+
+In this notebook we showcase how to use `decoupleR` for pathway activity
+inference with a down-sampled PBMCs 10X data-set. The data consists of 160 
+PBMCs from a Healthy Donor. The original data is freely available from 10x Genomics 
+[here](https://cf.10xgenomics.com/samples/cell/pbmc3k/pbmc3k_filtered_gene_bc_matrices.tar.gz)
+from this [webpage](https://support.10xgenomics.com/single-cell-gene-expression/datasets/1.1.0/pbmc3k).
+
+# Loading packages
+First, we need to load the relevant packages, `Seurat` to handle scRNA-seq data
+and `decoupleR` to use statistical methods.
+
+```{r "load packages", message = FALSE}
+## We load the required packages
+library(Seurat)
+library(decoupleR)
+
+# Only needed for data handling and plotting
+library(tidyverse)
+library(patchwork)
+library(ggplot2)
+library(pheatmap)
+```
+
+# Loading the data-set
+Here we used a down-sampled version of the data used in the `Seurat` 
+[vignette](https://satijalab.org/seurat/articles/pbmc3k_tutorial.html).
+We can open the data like this:
+```{r "load data"}
+inputs_dir <- system.file("extdata", package = "decoupleR")
+data <- readRDS(file.path(inputs_dir, "sc_data.rds"))
+```
+
+We can observe that we have different cell types:
+```{r "umap", message = FALSE, warning = FALSE}
+DimPlot(data, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+```
+
+# PROGENy model
+[PROGENy](https://saezlab.github.io/progeny/) is a comprehensive resource
+containing a curated collection of pathways and their target genes, with weights
+for each interaction. For this example we will use the human weights
+(mouse is also available) and we will use the top 100 responsive genes ranked
+by p-value. We can use `decoupleR` to retrieve it from `OmniPath`:
+
+```{r "progeny", message=FALSE}
+net <- get_progeny(organism = 'human', top = 100)
+net
+```
+
+# Activity inference with Weighted Mean
+To infer activities we will run the Weighted Mean method (`wmean`). It infers
+regulator activities by first multiplying each target feature by its associated
+weight which then are summed to an enrichment score `wmean`. Furthermore,
+permutations of random target features can be performed to obtain a null
+distribution that can be used to compute a z-score `norm_wmean`, or a corrected
+estimate `corr_wmean` by multiplying `wmean` by the minus log10 of the obtained
+empirical p-value.
+
+In this example we use `wmean` but we could have used any other.
+To see what methods are available use `show_methods()`.
+
+To run `decoupleR` methods, we need an input matrix (`mat`), an input prior
+knowledge network/resource (`net`), and the name of the columns of net that we
+want to use.
+
+```{r "wmean", message=FALSE}
+# Extract the normalized log-transformed counts
+mat <- as.matrix(data@assays$RNA@data)
+
+# Run wmean
+acts <- run_wmean(mat=mat, net=net, .source='source', .target='target',
+                  .mor='weight', times = 100, minsize = 5)
+acts
+```
+
+# Visualization
+From the obtained results, we will select the `norm_wmean` activities and store
+them in our object as a new assay called `pathwayswmean`:
+```{r "new_assay", message=FALSE}
+# Extract norm_wmean and store it in pathwayswmean in data
+data[['pathwayswmean']] <- acts %>%
+  filter(statistic == 'norm_wmean') %>%
+  pivot_wider(id_cols = 'source', names_from = 'condition',
+              values_from = 'score') %>%
+  column_to_rownames('source') %>%
+  Seurat::CreateAssayObject(.)
+
+# Change assay
+DefaultAssay(object = data) <- "pathwayswmean"
+
+# Scale the data
+data <- ScaleData(data)
+data@assays$pathwayswmean@data <- data@assays$pathwayswmean@scale.data
+```
+
+This new assay can be used to plot activities. Here we visualize the Trail
+pathway, associated with apoptosis, which seems that in B and NK cells is more
+active.
+```{r "projected_acts", message = FALSE, warning = FALSE, fig.width = 8, fig.height = 4}
+p1 <- DimPlot(data, reduction = "umap", label = TRUE, pt.size = 0.5) + 
+  NoLegend() + ggtitle('Cell types')
+p2 <- (FeaturePlot(data, features = c("Trail")) & 
+  scale_colour_gradient2(low = 'blue', mid = 'white', high = 'red')) +
+  ggtitle('Trail activity')
+p1 | p2
+```
+
+# Exploration
+We can also see what is the mean activity per group across pathways:
+```{r "mean_acts", message = FALSE, warning = FALSE}
+# Extract activities from object as a long dataframe
+df <- t(as.matrix(data@assays$pathwayswmean@data)) %>%
+  as.data.frame() %>%
+  mutate(cluster = Idents(data)) %>%
+  pivot_longer(cols = -cluster, names_to = "source", values_to = "score") %>%
+  group_by(cluster, source) %>%
+  summarise(mean = mean(score))
+
+# Transform to wide matrix
+top_acts_mat <- df %>%
+  pivot_wider(id_cols = 'cluster', names_from = 'source',
+              values_from = 'mean') %>%
+  column_to_rownames('cluster') %>%
+  as.matrix()
+
+# Choose color palette
+palette_length = 100
+my_color = colorRampPalette(c("Darkblue", "white","red"))(palette_length)
+
+my_breaks <- c(seq(-2, 0, length.out=ceiling(palette_length/2) + 1),
+               seq(0.05, 2, length.out=floor(palette_length/2)))
+
+# Plot
+pheatmap(top_acts_mat, border_color = NA, color=my_color, breaks = my_breaks) 
+```
+
+In this specific example, we can observe that Trail is more active in B and NK
+cells.
+
+# Session information
+
+```{r session_info, echo=FALSE}
+options(width = 120)
+sessioninfo::session_info()
+```

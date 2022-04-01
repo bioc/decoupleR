@@ -1,22 +1,19 @@
 #' Multivariate Decision Trees (MDT)
 #'
 #' @description
-#' Calculates regulatory activities by fitting multivariate decision trees (MDT)
-#' using [ranger::ranger()].
+#' Calculates regulatory activities using MDT.
 #'
 #' @details
-#' MDT fits a multivariate ensemble of decision trees (random forest) to
-#' estimate regulatory activities. MDT transforms a given network into an
-#' adjacency matrix, placing sources as columns and targets as rows. The matrix
-#' is filled with the associated weights for each interaction. This matrix is
-#' used to fit a random forest model to predict the observed molecular
-#' readouts per sample. The obtained feature importances from the fitted model
-#' are the activities of the regulators.
+#' 
+#' MDT fits a multivariate regression random forest for each sample, where the
+#' observed molecular readouts in mat are the response variable and the
+#' regulator weights in net are the covariates. Target features with no
+#' associated weight are set to zero. The obtained feature importances from the
+#' fitted model are the activities `mdt` of the regulators in net.
 #'
 #' @inheritParams .decoupler_mat_format
 #' @inheritParams .decoupler_network_format
-#' @param sparse Logical value indicating if the generated profile matrix
-#'  should be sparse.
+#' @param sparse Deprecated parameter.
 #' @param center Logical value indicating if `mat` must be centered by
 #' [base::rowMeans()].
 #' @param na.rm Should missing values (including NaN) be omitted from the
@@ -27,6 +24,7 @@
 #' @param nproc Number of cores to use for computation.
 #' @param seed A single value, interpreted as an integer, or NULL for random
 #'  number generation.
+#' @param minsize Integer indicating the minimum number of targets per source.
 #'
 #' @return A long format tibble of the enrichment scores for each source
 #'  across the samples. Resulting tibble contains the following columns:
@@ -40,7 +38,6 @@
 #' @import dplyr
 #' @import purrr
 #' @import tibble
-#' @import ranger
 #' @examples
 #' inputs_dir <- system.file("testdata", "inputs", package = "decoupleR")
 #'
@@ -60,7 +57,8 @@ run_mdt <- function(mat,
                     trees = 10,
                     min_n = 20,
                     nproc = 4,
-                    seed = 42
+                    seed = 42,
+                    minsize = 5
 ) {
   # Check for NAs/Infs in mat
   check_nas_infs(mat)
@@ -68,72 +66,17 @@ run_mdt <- function(mat,
   # Before to start ---------------------------------------------------------
   # Convert to standard tibble: source-target-mor.
   network <- network %>%
-    convert_to_mlm({{ .source }}, {{ .target }}, {{ .mor }}, {{ .likelihood }})
+    rename_net({{ .source }}, {{ .target }}, {{ .mor }}, {{ .likelihood }})
+  network <- filt_minsize(rownames(mat), network, minsize)
 
   # Preprocessing -----------------------------------------------------------
-  .mdt_preprocessing(network, mat, center, na.rm, sparse) %>%
+  .fit_preprocessing(network, mat, center, na.rm, sparse) %>%
     # Model evaluation --------------------------------------------------------
   {
     withr::with_seed(seed, {
       .mdt_analysis(.$mat, .$mor_mat, trees, min_n, nproc)
     })
   }
-}
-
-# Helper functions ------------------------------------------------------
-#' mdt preprocessing
-#'
-#' - Get only the intersection of target genes between `mat` and `network`.
-#' - Transform tidy `network` into `matrix` representation with `mor` as value.
-#' - If `center` is true, then the expression values are centered by the
-#'   mean of expression across the conditions.
-#'
-#' @inheritParams run_mdt
-#'
-#' @return A named list of matrices to evaluate in `.nolea_analysis()`.
-#'  - mat: Genes as rows and conditions as columns.
-#'  - mor_mat: Genes as rows and columns as source.
-#' @keywords intern
-#' @noRd
-.mdt_preprocessing <- function(network, mat, center, na.rm, sparse) {
-  shared_targets <- intersect(
-    rownames(mat),
-    network$target
-  )
-
-  mat <- mat[shared_targets, ]
-
-  mor_mat <- network %>%
-    filter(.data$target %in% shared_targets) %>%
-    pivot_wider_profile(
-      id_cols = .data$target,
-      names_from = .data$source,
-      values_from = .data$mor,
-      values_fill = 0,
-      to_matrix = TRUE,
-      to_sparse = sparse
-    ) %>%
-    .[shared_targets, ]
-
-  likelihood_mat <- network %>%
-    filter(.data$target %in% shared_targets) %>%
-    pivot_wider_profile(
-      id_cols = .data$target,
-      names_from = .data$source,
-      values_from = .data$likelihood,
-      values_fill = 0,
-      to_matrix = TRUE,
-      to_sparse = sparse
-    ) %>%
-    .[shared_targets, ]
-
-  weight_mat <- mor_mat * likelihood_mat
-
-  if (center) {
-    mat <- mat - rowMeans(mat, na.rm)
-  }
-
-  list(mat = mat, mor_mat = weight_mat)
 }
 
 #' Wrapper to execute run_mdt() logic one finished preprocessing of data

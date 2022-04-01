@@ -1,6 +1,9 @@
+url: https://saezlab.github.io/decoupleR/
+
 destination: docs
 
 template:
+  bootstrap: 5
   params:
     ganalytics: UA-119440867-11
 
@@ -32,9 +35,21 @@ reference:
     desc: >
     contents:
       - convert_f_defaults
-      - starts_with("convert_to_")
-  - title: Before to run statistics
+      - rename_net
+      - extract_sets
+  - title: Utils
     desc: >
     contents:
+      - check_corr
+      - get_toy_data
+      - show_methods
+      - .fit_preprocessing
+      - filt_minsize
       - intersect_regulons
-      - filter_regulons
+  - title: Omnipath wrappers
+    desc: >
+    contents:
+      - show_resources
+      - get_resource
+      - get_dorothea
+      - get_progeny

@@ -4,13 +4,23 @@
 #' Calculates regulatory activities using GSVA.
 #'
 #' @details
-#' This function is a wrapper for the method [GSVA::gsva()].
+#' GSVA (Hänzelmann et al., 2013) starts by transforming the input molecular
+#' readouts in mat to a readout-level statistic using Gaussian kernel estimation
+#'  of the cumulative density function. Then, readout-level statistics are
+#'  ranked per sample and normalized to up-weight the two tails of the rank
+#'  distribution. Afterwards, an enrichment score `gsva` is calculated
+#'  using a running sum statistic that is normalized by subtracting the largest
+#'  negative estimate from the largest positive one.
+#'  
+#'  Hänzelmann S. et al. (2013) GSVA: gene set variation analysis for microarray
+#'   and RNA-seq data. BMC Bioinformatics, 14, 7.
 #'
 #' @inheritParams .decoupler_mat_format
 #' @inheritParams .decoupler_network_format
 #' @param verbose Gives information about each calculation step. Default: FALSE.
 #' @param method Method to employ in the estimation of gene-set enrichment.
 #' scores per sample. By default this is set to gsva (Hänzelmann et al, 2013).
+#' @param minsize Integer indicating the minimum number of targets per source.
 #' @inheritDotParams GSVA::gsva -expr -gset.idx.list
 #'
 #' @return A long format tibble of the enrichment scores for each source
@@ -34,13 +44,16 @@ run_gsva <- function(mat,
                      .target = .data$target,
                      verbose = FALSE,
                      method = "gsva",
+                     minsize = 5,
                      ...) {
     # Check for NAs/Infs in mat
     check_nas_infs(mat)
 
     # Before to start ---------------------------------------------------------
-    regulons <- network %>%
-        convert_to_gsva({{ .source }}, {{ .target }})
+    network <- network %>%
+        rename_net({{ .source }}, {{ .target }})
+    network <- filt_minsize(rownames(mat), network, minsize)
+    regulons <- extract_sets(network)
 
     # Analysis ----------------------------------------------------------------
     exec(

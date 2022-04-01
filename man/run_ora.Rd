@@ -9,10 +9,12 @@ run_ora(
   network,
   .source = .data$source,
   .target = .data$target,
-  n_up = 300,
-  n_bottom = 300,
+  n_up = ceiling(0.05 * nrow(mat)),
+  n_bottom = 0,
   n_background = 20000,
   with_ties = TRUE,
+  seed = 42,
+  minsize = 5,
   ...
 )
 }
@@ -40,6 +42,11 @@ the total number of unique targets in the union of \code{mat} and \code{network}
 \item{with_ties}{Should ties be kept together? The default, \code{TRUE},
 may return more rows than you request. Use \code{FALSE} to ignore ties,
 and return the first \code{n} rows.}
+
+\item{seed}{A single value, interpreted as an integer, or NULL for random
+number generation.}
+
+\item{minsize}{Integer indicating the minimum number of targets per source.}
 
 \item{...}{
   Arguments passed on to \code{\link[stats:fisher.test]{stats::fisher.test}}
@@ -96,8 +103,14 @@ across the samples. Resulting tibble contains the following columns:
 Calculates regulatory activities using ORA.
 }
 \details{
-Performs an over-representation analysis using \code{\link[stats:fisher.test]{stats::fisher.test()}}.
-Obtained scores are -log10(p-values).
+ORA measures the overlap between the target feature set and a list of most
+altered molecular features in mat. The most altered molecular features can
+be selected from the top and or bottom of the molecular readout distribution,
+by default it is the top 5\% positive values. With these, a contingency table
+is build and a one-tailed Fisher’s exact test is computed to determine if a
+regulator’s set of features are over-represented in the selected features
+from the data. The resulting score, \code{ora}, is the minus log10 of the
+obtained p-value.
 }
 \examples{
 inputs_dir <- system.file("testdata", "inputs", package = "decoupleR")

@@ -1,24 +1,24 @@
 #' Multivariate Linear Model (MLM)
 #'
 #' @description
-#' Calculates regulatory activities by fitting multivariate linear models (MLM)
+#' Calculates regulatory activities using MLM.
 #'
 #' @details
-#' MLM fits a multivariate linear model to estimate regulatory activities.
-#' MLM transforms a given network into an adjacency matrix, placing sources as
-#' columns and targets as rows. The matrix is filled with the associated weights
-#' for each interaction. This matrix is used to fit a linear model to predict
-#' the observed molecular readouts per sample. The obtained t-values from the
-#' fitted model are the activities of the regulators.
+#' 
+#' MLM fits a multivariate linear model for each sample, where the observed
+#' molecular readouts in mat are the response variable and the regulator weights
+#' in net are the covariates. Target features with no associated weight are set
+#' to zero. The obtained t-values from the fitted model are the activities 
+#' (`mlm`) of the regulators in net.
 #'
 #' @inheritParams .decoupler_mat_format
 #' @inheritParams .decoupler_network_format
-#' @param sparse Logical value indicating if the generated profile matrix
-#'  should be sparse.
+#' @param sparse Deprecated parameter.
 #' @param center Logical value indicating if `mat` must be centered by
 #' [base::rowMeans()].
 #' @param na.rm Should missing values (including NaN) be omitted from the
 #'  calculations of [base::rowMeans()]?
+#' @param minsize Integer indicating the minimum number of targets per source.
 #'
 #' @return A long format tibble of the enrichment scores for each source
 #'  across the samples. Resulting tibble contains the following columns:
@@ -34,7 +34,6 @@
 #' @import tibble
 #' @import tidyr
 #' @importFrom stats coef lm summary.lm
-#' @importFrom speedglm speedlm.fit
 #' @examples
 #' inputs_dir <- system.file("testdata", "inputs", package = "decoupleR")
 #'
@@ -43,84 +42,31 @@
 #'
 #' run_mlm(mat, network, .source='tf')
 run_mlm <- function(mat,
-                      network,
-                      .source = .data$source,
-                      .target = .data$target,
-                      .mor = .data$mor,
-                      .likelihood = .data$likelihood,
-                      sparse = FALSE,
-                      center = FALSE,
-                      na.rm = FALSE) {
+                    network,
+                    .source = .data$source,
+                    .target = .data$target,
+                    .mor = .data$mor,
+                    .likelihood = .data$likelihood,
+                    sparse = FALSE,
+                    center = FALSE,
+                    na.rm = FALSE,
+                    minsize = 5) {
   # Check for NAs/Infs in mat
   check_nas_infs(mat)
-
+  
   # Before to start ---------------------------------------------------------
   # Convert to standard tibble: source-target-mor.
   network <- network %>%
-    convert_to_mlm({{ .source }}, {{ .target }}, {{ .mor }}, {{ .likelihood }})
-
+    rename_net({{ .source }}, {{ .target }}, {{ .mor }}, {{ .likelihood }})
+  network <- filt_minsize(rownames(mat), network, minsize)
+  
   # Preprocessing -----------------------------------------------------------
-  .mlm_preprocessing(network, mat, center, na.rm, sparse) %>%
+  .fit_preprocessing(network, mat, center, na.rm, sparse) %>%
     # Model evaluation --------------------------------------------------------
   {
     .mlm_analysis(.$mat, .$mor_mat)
-  }
-}
-
-# Helper functions ------------------------------------------------------
-#' mlm preprocessing
-#'
-#' - Get only the intersection of target genes between `mat` and `network`.
-#' - Transform tidy `network` into `matrix` representation with `mor` as value.
-#' - If `center` is true, then the expression values are centered by the
-#'   mean of expression across the conditions.
-#'
-#' @inheritParams run_mlm
-#'
-#' @return A named list of matrices to evaluate in `.mlm_analysis()`.
-#'  - mat: Genes as rows and conditions as columns.
-#'  - mor_mat: Genes as rows and columns as source.
-#' @keywords intern
-#' @noRd
-.mlm_preprocessing <- function(network, mat, center, na.rm, sparse) {
-  shared_targets <- intersect(
-    rownames(mat),
-    network$target
-  )
-
-  mat <- mat[shared_targets, ]
-
-  mor_mat <- network %>%
-    filter(.data$target %in% shared_targets) %>%
-    pivot_wider_profile(
-      id_cols = .data$target,
-      names_from = .data$source,
-      values_from = .data$mor,
-      values_fill = 0,
-      to_matrix = TRUE,
-      to_sparse = sparse
-    ) %>%
-    .[shared_targets, ]
-
-  likelihood_mat <- network %>%
-    filter(.data$target %in% shared_targets) %>%
-    pivot_wider_profile(
-      id_cols = .data$target,
-      names_from = .data$source,
-      values_from = .data$likelihood,
-      values_fill = 0,
-      to_matrix = TRUE,
-      to_sparse = sparse
-    ) %>%
-    .[shared_targets, ]
-
-  weight_mat <- mor_mat * likelihood_mat
-
-  if (center) {
-    mat <- mat - rowMeans(mat, na.rm)
-  }
-
-  list(mat = mat, mor_mat = weight_mat)
+  } %>%
+    ungroup()
 }
 
 #' Wrapper to execute run_mlm() logic one finished preprocessing of data
@@ -139,7 +85,7 @@ run_mlm <- function(mat,
     mat = mat,
     mor_mat = mor_mat
   )
-
+  
   # Allocate the space for all conditions and evaluate the proposed model.
   expand_grid(
     condition = colnames(mat)
@@ -155,10 +101,16 @@ run_mlm <- function(mat,
 #' @keywords internal
 #' @noRd
 .mlm_evaluate_model <- function(condition, mat, mor_mat) {
-  #data <- cbind(data.frame(y=mat[ , condition]), mor_mat)
   fit <- lm(mat[ , condition] ~ mor_mat) %>%
-      summary()
+    summary()
   scores <- as.vector(fit$coefficients[,3][-1])
   pvals <- as.vector(fit$coefficients[,4][-1])
-  tibble(score=scores, p_value=pvals, source=colnames(mor_mat))
+  sources <- colnames(mor_mat)
+  diff_n <- length(sources) - length(scores)
+  if (diff_n > 0) {
+    stop(stringr::str_glue('After intersecting mat and network, at least {diff_n} sources in the network are colinear with other sources.
+      Cannot fit a linear model with colinear covariables, please remove them.
+      Please run decoupleR::check_corr to see what regulators are correlated.'))
+  }
+  tibble(score=scores, p_value=pvals, source=sources)
 }

@@ -13,7 +13,8 @@ run_ulm(
   .likelihood = .data$likelihood,
   sparse = FALSE,
   center = FALSE,
-  na.rm = FALSE
+  na.rm = FALSE,
+  minsize = 5
 )
 }
 \arguments{
@@ -30,16 +31,17 @@ in \code{network} \code{.target} column.}
 
 \item{.mor}{Column with edge mode of regulation (i.e. mor).}
 
-\item{.likelihood}{Column with edge likelihood.}
+\item{.likelihood}{Deprecated argument. Now it will always be set to 1.}
 
-\item{sparse}{Logical value indicating if the generated profile matrix
-should be sparse.}
+\item{sparse}{Deprecated parameter.}
 
 \item{center}{Logical value indicating if \code{mat} must be centered by
 \code{\link[base:colSums]{base::rowMeans()}}.}
 
 \item{na.rm}{Should missing values (including NaN) be omitted from the
 calculations of \code{\link[base:colSums]{base::rowMeans()}}?}
+
+\item{minsize}{Integer indicating the minimum number of targets per source.}
 }
 \value{
 A long format tibble of the enrichment scores for each source
@@ -52,15 +54,14 @@ across the samples. Resulting tibble contains the following columns:
 }
 }
 \description{
-Calculates regulatory activities by fitting univariate linear models (ULM).
+Calculates regulatory activities using ULM.
 }
 \details{
-ULM fits a (univariate) linear model to estimate regulatory activities. ULM
-fits a linear model that predicts the observed molecular readouts using the given
-weights of a regulator as a single co-variate. The obtained t-value
-from the fitted model is the activity of the regulator. This approach was first
-described in:
-\href{https://www.nature.com/articles/s41525-020-00151-y?elqTrackId=d7efb03cf5174fe2ba84e1c34d602b13}{Improved detection of tumor suppressor events in single-cell RNA-Seq data}.
+ULM fits a linear model for each sample and regulator, where the observed
+molecular readouts in mat are the response variable and the regulator weights
+in net are the explanatory one. Target features with no associated weight
+are set to zero. The obtained t-value from the fitted model is the activity
+\code{ulm} of a given regulator.
 }
 \examples{
 inputs_dir <- system.file("testdata", "inputs", package = "decoupleR")

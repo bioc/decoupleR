@@ -4,8 +4,14 @@
 #' Calculates regulatory activities using ORA.
 #'
 #' @details
-#' Performs an over-representation analysis using [stats::fisher.test()].
-#' Obtained scores are -log10(p-values).
+#' ORA measures the overlap between the target feature set and a list of most
+#' altered molecular features in mat. The most altered molecular features can
+#' be selected from the top and or bottom of the molecular readout distribution,
+#' by default it is the top 5% positive values. With these, a contingency table
+#' is build and a one-tailed Fisher’s exact test is computed to determine if a
+#' regulator’s set of features are over-represented in the selected features
+#' from the data. The resulting score, `ora`, is the minus log10 of the
+#' obtained p-value.
 #'
 #' @inheritParams .decoupler_mat_format
 #' @inheritParams .decoupler_network_format
@@ -18,6 +24,9 @@
 #' @param with_ties Should ties be kept together? The default, `TRUE`,
 #'  may return more rows than you request. Use `FALSE` to ignore ties,
 #'   and return the first `n` rows.
+#' @param seed A single value, interpreted as an integer, or NULL for random
+#'  number generation.
+#' @param minsize Integer indicating the minimum number of targets per source.
 #' @inheritDotParams stats::fisher.test -x -y
 #'
 #' @return A long format tibble of the enrichment scores for each source
@@ -39,24 +48,30 @@ run_ora <- function(mat,
                     network,
                     .source = .data$source,
                     .target = .data$target,
-                    n_up = 300,
-                    n_bottom = 300,
+                    n_up = ceiling(0.05 * nrow(mat)),
+                    n_bottom = 0,
                     n_background = 20000,
                     with_ties = TRUE,
+                    seed = 42,
+                    minsize = 5,
                     ...) {
     # Check for NAs/Infs in mat
     check_nas_infs(mat)
 
     # Before to start ---------------------------------------------------------
-    regulons <- network %>%
-        convert_to_ora({{ .source }}, {{ .target }})
+    network <- network %>%
+      rename_net({{ .source }}, {{ .target }})
+    network <- filt_minsize(rownames(mat), network, minsize)
+    regulons <- extract_sets(network)
 
     ns <- .ora_check_ns(n_up, n_bottom, n_background, network, mat)
     n_up <- ns[1]
     n_bottom <- ns[2]
     n_background <- ns[3]
 
-    targets <- .ora_slice_targets(mat, n_up, n_bottom, with_ties)
+    withr::with_seed(seed, {
+      targets <- .ora_slice_targets(mat, n_up, n_bottom, with_ties)
+    })
 
     # Run analysis ------------------------------------------------------------
     .ora_analysis(regulons, targets, n_background, ...)
@@ -123,8 +138,8 @@ run_ora <- function(mat,
 #' @noRd
 .ora_contingency_table <- function(expected, observed, n_background) {
     true_positive <- intersect(observed, expected) %>% length()
-    false_positive <- setdiff(observed, expected) %>% length()
-    false_negative <- setdiff(expected, observed) %>% length()
+    false_positive <- setdiff(expected, observed) %>% length()
+    false_negative <- setdiff(observed, expected) %>% length()
     true_negative <- (n_background -
         true_positive - false_positive - false_negative)
 
@@ -147,12 +162,13 @@ run_ora <- function(mat,
       names_to = "condition",
       values_to = "value"
     ) %>%
-    arrange(.data$condition, .data$value) %>%
+    mutate(rand=stats::rnorm(n())) %>% 
+    arrange(.data$condition, .data$value, .data$rand) %>%
     group_by(.data$condition) %>%
     {
       bind_rows(
-        slice_tail(., n = n_up),
-        slice_head(., n = n_bottom)
+        slice_max(., .data$value, n = n_up, with_ties = with_ties),
+        slice_min(., .data$value, n = n_bottom, with_ties = with_ties)
       )
     } %>%
     arrange(.data$condition) %>%

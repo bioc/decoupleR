@@ -55,7 +55,7 @@ run_udt(emat, dorothea_genesets, .source='tf') %>%
     saveRDS(out_default$udt)
 
 #----- run_mdt() ---------------------------------------------------------------
-run_mdt(emat, dorothea_genesets, .source='tf') %>%
+run_mdt(emat, dorothea_genesets, .source='tf', trees=1000) %>%
     saveRDS(out_default$mdt)
 
 #----- run_aucell() ------------------------------------------------------------
@@ -87,7 +87,7 @@ run_gsva(emat, dorothea_genesets, .source='tf') %>%
     saveRDS(out_default$gsva)
 
 #----- run_ora() ---------------------------------------------------------------
-run_ora(emat, dorothea_genesets, .source='tf') %>%
+run_ora(emat, dorothea_genesets, .source='tf', n_up=300, n_bottom=300) %>%
     saveRDS(out_default$ora)
 
 #----- run_fgsea() -------------------------------------------------------------
