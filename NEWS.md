@@ -5,6 +5,9 @@
 
 * Changed test data to toy data.
 
+## Bugfixes
+* `ora` now selects correctly the top and bottom genes for p-value estimation.
+
 # decoupleR 2.1.
 
 ## Changes
